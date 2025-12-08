@@ -16,20 +16,19 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private val paint = Paint()
     private val textPaint = Paint()
 
-    // Экран
     private var screenW = 0
     private var screenH = 0
 
     // Игрок
-    private var playerX = 0f
+    private var playerX = 150f
     private var playerY = 0f
     private var playerSpeedY = 0f
-    private val gravity = 2.2f
-    private val jumpForce = -55f
+    private val gravity = 2.5f
+    private val jumpForce = -60f
     private var isHappy = false
     private var happyTimer = 0L
 
-    // Геймплей и счет
+    // Геймплей
     private var beerCount = 0
     private var vodkaCount = 0
     private var frameCount = 0
@@ -39,17 +38,22 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     private val bmpPlayerHappy = BitmapFactory.decodeResource(resources, R.drawable.player_happy)
     private val bmpBeer = BitmapFactory.decodeResource(resources, R.drawable.beer)
     private val bmpVodka = BitmapFactory.decodeResource(resources, R.drawable.vodka)
+    private val bmpEmptyBottle = BitmapFactory.decodeResource(resources, R.drawable.empty_bottle)
 
-    // Списки объектов
+    // Объекты
     private val platforms = mutableListOf<RectF>()
     private val regularBeers = mutableListOf<RectF>()
-    private val flyingBeers = mutableListOf<FlyingBeer>()
+    private val flyingVodka = mutableListOf<FlyingBeer>()
+    private val bullets = mutableListOf<RectF>()
+
+    // Интерфейс (Кнопки)
+    private var btnJump = RectF()
+    private var btnShoot = RectF()
 
     init {
         textPaint.color = Color.WHITE
-        textPaint.textSize = 60f
+        textPaint.textSize = 50f
         textPaint.typeface = Typeface.DEFAULT_BOLD
-        textPaint.setShadowLayer(10f, 0f, 0f, Color.BLACK)
     }
 
     override fun run() {
@@ -62,152 +66,148 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
 
     private fun update() {
         frameCount++
-
-        // Сброс состояния радости
         if (isHappy && System.currentTimeMillis() > happyTimer) isHappy = false
 
         // 1. Физика игрока
         playerSpeedY += gravity
         playerY += playerSpeedY
 
-        // 2. Генерация платформ и обычного пива
+        // 2. Полет пуль (вправо)
+        val bulletIter = bullets.iterator()
+        while (bulletIter.hasNext()) {
+            val b = bulletIter.next()
+            b.offset(25f, 0f)
+            if (b.left > screenW) bulletIter.remove()
+        }
+
+        // 3. Генерация контента
         if (platforms.isEmpty() || platforms.last().right < screenW + 500) {
             val gap = (400..700).random().toFloat()
             val platW = (400..800).random().toFloat()
-            val platTop = (screenH * 0.6f).toInt()..(screenH * 0.85f).toInt()
-            val randomY = platTop.random().toFloat()
-
-            val newPlat = RectF(screenW.toFloat() + gap, randomY, screenW.toFloat() + gap + platW, screenH.toFloat())
+            val platY = (screenH * 0.6f).toInt()..(screenH * 0.85f).toInt()
+            val newPlat = RectF(screenW.toFloat() + gap, platY.random().toFloat(), screenW.toFloat() + gap + platW, screenH.toFloat())
             platforms.add(newPlat)
 
-            // Шанс появления обычного пива на платформе
-            if (Random().nextInt(10) > 4) {
+            if (Random().nextInt(10) > 5) {
                 regularBeers.add(RectF(newPlat.centerX() - 40, newPlat.top - 90, newPlat.centerX() + 40, newPlat.top - 10))
             }
         }
 
-        // 3. Генерация летающего пива (раз в 180 кадров)
+        // Генерация летающего пива (раз в 180 кадров)
         if (frameCount % 180 == 0) {
-            val startY = screenH * (0.2f + Random().nextFloat() * (0.5f - 0.2f))
-            flyingBeers.add(FlyingBeer(
-                RectF(screenW.toFloat() + 100, startY, screenW.toFloat() + 180, startY + 80),
-                startY, 0.0
-            ))
+            val startY = (screenH * 0.2f).toInt()..(screenH * 0.5f).toInt()
+            val y = startY.random().toFloat()
+            flyingVodka.add(FlyingBeer(RectF(screenW.toFloat() + 100, y, screenW.toFloat() + 180, y + 80), y, 0.0))
         }
 
-        // 4. Движение и коллизии платформ
-        val platSpeed = 15f
-        val pIter = platforms.iterator()
-        while (pIter.hasNext()) {
-            val p = pIter.next()
-            p.left -= platSpeed
-            p.right -= platSpeed
+        // 4. Движение платформ и коллизии
+        val worldSpeed = 15f
+        platforms.forEach { it.offset(-worldSpeed, 0f) }
+        regularBeers.forEach { it.offset(-worldSpeed, 0f) }
 
-            // Приземление
+        platforms.forEach { p ->
             if (playerX + 80 > p.left && playerX < p.right && playerY + 100 > p.top && playerY + 100 < p.top + 60 && playerSpeedY > 0) {
                 playerY = p.top - 100
                 playerSpeedY = 0f
             }
-            if (p.right < 0) pIter.remove()
         }
 
-        // 5. Движение обычного пива
-        val bIter = regularBeers.iterator()
-        while (bIter.hasNext()) {
-            val b = bIter.next()
-            b.left -= platSpeed
-            b.right -= platSpeed
-            if (RectF.intersects(RectF(playerX, playerY, playerX+100, playerY+100), b)) {
+        // 5. Сбор обычного пива
+        val beerIter = regularBeers.iterator()
+        while (beerIter.hasNext()) {
+            if (RectF.intersects(RectF(playerX, playerY, playerX + 100, playerY + 100), beerIter.next())) {
                 beerCount++; isHappy = true; happyTimer = System.currentTimeMillis() + 2000
-                bIter.remove()
-            } else if (b.right < 0) bIter.remove()
+                beerIter.remove()
+            }
         }
 
-        // 6. Движение ЛЕТАЮЩЕГО пива (Синусоида)
-        val fIter = flyingBeers.iterator()
-        while (fIter.hasNext()) {
-            val fb = fIter.next()
+        // 6. Логика ЛЕТАЮЩЕГО пива
+        val flyIter = flyingVodka.iterator()
+        while (flyIter.hasNext()) {
+            val fb = flyIter.next()
             fb.angle += 0.1
-            val wave = Math.sin(fb.angle).toFloat() * 60f // Амплитуда
+            val offset = Math.sin(fb.angle).toFloat() * 60f
 
-            fb.rect.left -= 18f // Летит чуть быстрее
-            fb.rect.right -= 18f
-            fb.rect.top = fb.startY + wave
-            fb.rect.bottom = fb.startY + wave + 80f
+            fb.rect.offset(-18f, 0f) // Летит влево
+            fb.rect.top = fb.startY + offset
+            fb.rect.bottom = fb.startY + offset + 80f
 
-            if (RectF.intersects(RectF(playerX, playerY, playerX+100, playerY+100), fb.rect)) {
-                vodkaCount++;
-                isHappy = true; happyTimer = System.currentTimeMillis() + 2000
-                fIter.remove()
-            } else if (fb.rect.right < 0) fIter.remove()
+            // Сбор летуна игроком
+            if (RectF.intersects(RectF(playerX, playerY, playerX + 100, playerY + 100), fb.rect)) {
+                vodkaCount++; isHappy = true; happyTimer = System.currentTimeMillis() + 2000
+                flyIter.remove()
+            } else if (fb.rect.right < 0) flyIter.remove()
         }
 
-        // 7. Смерть (падение)
         if (playerY > screenH) resetGame()
     }
 
     private fun resetGame() {
-        beerCount = 0
-        playerY = 0f
-        playerSpeedY = 0f
-        flyingBeers.clear()
-        // onSizeChanged создаст стартовую платформу заново при необходимости
+        beerCount = 0; playerY = 0f; playerSpeedY = 0f; bullets.clear(); flyingVodka.clear()
     }
 
     private fun draw() {
         if (holder.surface.isValid) {
-            // Мы объявляем canvas прямо здесь, получая его из SurfaceHolder
             val canvas = holder.lockCanvas()
-
             if (canvas != null) {
                 try {
-                    // 1. Отрисовка фона
                     canvas.drawColor(Color.parseColor("#4FC3F7"))
 
-                    // 2. Отрисовка платформ
+                    // Платформы
                     paint.color = Color.parseColor("#795548")
-                    for (p in platforms) canvas.drawRect(p, paint)
+                    platforms.forEach { canvas.drawRect(it, paint) }
 
-                    // 3. Отрисовка обычного пива
-                    for (b in regularBeers) canvas.drawBitmap(bmpBeer, null, b, null)
+                    // Обычное и летающее пиво
+                    regularBeers.forEach { canvas.drawBitmap(bmpBeer, null, it, null) }
+                    flyingVodka.forEach { canvas.drawBitmap(bmpVodka, null, it.rect, null) }
 
-                    // 4. Отрисовка летающего пива
-                    for (fb in flyingBeers) canvas.drawBitmap(bmpVodka, null, fb.rect, null)
+                    // Пули
+                    bullets.forEach { canvas.drawBitmap(bmpEmptyBottle, null, it, null) }
 
-                    // 5. Отрисовка игрока
+                    // Игрок
                     val bmp = if (isHappy) bmpPlayerHappy else bmpPlayer
-                    val playerRect = RectF(playerX, playerY, playerX + 100, playerY + 100)
-                    canvas.drawBitmap(bmp, null, playerRect, null)
+                    canvas.drawBitmap(bmp, null, RectF(playerX, playerY, playerX + 100, playerY + 100), null)
 
-                    // 6. Отрисовка текста (счётчик)
-                    canvas.drawText("Выжрано пива $beerCount, выжрано водки: $vodkaCount", 50f, 100f, textPaint)
+                    // UI
+                    drawUI(canvas)
+                    canvas.drawText("Выжрано пива: $beerCount, выжрано водки: $vodkaCount", 50f, 80f, textPaint)
 
                 } finally {
-                    // Очень важно: разблокировать canvas, даже если произошла ошибка
                     holder.unlockCanvasAndPost(canvas)
                 }
             }
         }
     }
 
-    private fun control() { Thread.sleep(17) }
+    private fun drawUI(canvas: Canvas) {
+        paint.color = Color.argb(120, 255, 255, 255)
+        canvas.drawRoundRect(btnJump, 20f, 20f, paint)
+        canvas.drawText("JUMP", btnJump.centerX() - 60, btnJump.centerY() + 20, textPaint)
 
-    override fun onTouchEvent(event: MotionEvent?): Boolean {
-        if (event?.action == MotionEvent.ACTION_DOWN && playerSpeedY == 0f) {
-            playerSpeedY = jumpForce
+        canvas.drawRoundRect(btnShoot, 20f, 20f, paint)
+        canvas.drawText("SHOOT", btnShoot.centerX() - 70, btnShoot.centerY() + 20, textPaint)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN) {
+            if (btnJump.contains(event.x, event.y) && playerSpeedY == 0f) playerSpeedY = jumpForce
+            if (btnShoot.contains(event.x, event.y)) {
+                bullets.add(RectF(playerX + 100, playerY + 20, playerX + 160, playerY + 80))
+            }
         }
         return true
     }
 
+    private fun control() { Thread.sleep(17) }
     fun pause() { isPlaying = false; thread?.join() }
     fun resume() { isPlaying = true; thread = Thread(this); thread?.start() }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         screenW = w; screenH = h
-        val groundY = h * 0.75f
-        platforms.clear()
-        platforms.add(RectF(0f, groundY, w.toFloat(), h.toFloat()))
-        playerX = 150f; playerY = groundY - 100f
+        btnJump = RectF(w - 250f, h - 350f, w - 50f, h - 210f)
+        btnShoot = RectF(w - 250f, h - 180f, w - 50f, h - 40f)
+        platforms.add(RectF(0f, h * 0.75f, w.toFloat(), h.toFloat()))
+        playerY = h * 0.75f - 100f
     }
 }
