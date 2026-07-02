@@ -296,10 +296,11 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
                     val bmp = if (isHappy) bmpPlayerHappy else bmpPlayer
                     canvas.drawBitmap(bmp, null, RectF(playerX, playerY, playerX + 100, playerY + 100), null)
 
-                    // UI
+                    drawBossSequence(canvas)
+
+                    // UI поверх всего, чтобы босс не перекрывал контролы
                     drawUI(canvas)
                     drawDrunkBar(canvas)
-                    drawBossSequence(canvas)
 
                 } finally {
                     holder.unlockCanvasAndPost(canvas)
@@ -387,8 +388,13 @@ class GameView(context: Context) : SurfaceView(context), Runnable {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         screenW = w; screenH = h
-        btnJump = RectF(w - 250f, h - 350f, w - 50f, h - 210f)
-        btnShoot = RectF(w - 250f, h - 180f, w - 50f, h - 40f)
+        val btnW = 200f
+        val btnH = 140f
+        val leftGap = w * 0.15f
+        val rightGap = w * 0.15f
+        // Джойстик-раскладка: прыжок внизу слева, стрельба внизу справа, обе с отступом от края
+        btnJump = RectF(leftGap, h - 180f, leftGap + btnW, h - 180f + btnH)
+        btnShoot = RectF(w - rightGap - btnW, h - 180f, w - rightGap, h - 180f + btnH)
         platforms.add(RectF(0f, h * 0.75f, w.toFloat(), h.toFloat()))
         playerY = h * 0.75f - 100f
     }
